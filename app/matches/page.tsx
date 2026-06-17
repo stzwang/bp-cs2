@@ -23,8 +23,31 @@ function formatDay(iso: string) {
   });
 }
 
-function TeamLogo({ name, size = 24 }: { name: string; size?: number }) {
-  // Strip common prefixes to get a short abbr
+function TeamLogo({
+  name,
+  logoUrl,
+  size = 24,
+}: {
+  name: string;
+  logoUrl?: string | null;
+  size?: number;
+}) {
+  if (logoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt={name}
+        style={{
+          width: size,
+          height: size,
+          objectFit: "contain",
+          borderRadius: size > 48 ? 8 : 3,
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
   const abbr = name
     .replace(/^Team /i, "")
     .split(" ")
@@ -32,7 +55,6 @@ function TeamLogo({ name, size = 24 }: { name: string; size?: number }) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-
   return (
     <div
       style={{
@@ -114,6 +136,7 @@ function MatchCard({ match }: { match: Match }) {
         {/* Team 1 row */}
         <TeamRow
           name={match.team1.name}
+          logoUrl={match.team1.logo_url}
           score={match.series_score_1}
           won={t1Won}
           lost={isDone && !t1Won}
@@ -125,6 +148,7 @@ function MatchCard({ match }: { match: Match }) {
         {/* Team 2 row */}
         <TeamRow
           name={match.team2.name}
+          logoUrl={match.team2.logo_url}
           score={match.series_score_2}
           won={t2Won}
           lost={isDone && !t2Won}
@@ -136,11 +160,13 @@ function MatchCard({ match }: { match: Match }) {
 
 function TeamRow({
   name,
+  logoUrl,
   score,
   won,
   lost,
 }: {
   name: string;
+  logoUrl?: string | null;
   score: number;
   won: boolean;
   lost: boolean;
@@ -155,7 +181,7 @@ function TeamRow({
         opacity: lost ? 0.45 : 1,
       }}
     >
-      <TeamLogo name={name} />
+      <TeamLogo name={name} logoUrl={logoUrl} />
       <span
         style={{
           flex: 1,

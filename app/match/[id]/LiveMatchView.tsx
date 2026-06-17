@@ -33,7 +33,31 @@ function winTypeLabel(wt: string | null): string {
   return map[wt] ?? wt;
 }
 
-function TeamLogo({ name, size = 24 }: { name: string; size?: number }) {
+function TeamLogo({
+  name,
+  logoUrl,
+  size = 24,
+}: {
+  name: string;
+  logoUrl?: string | null;
+  size?: number;
+}) {
+  if (logoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt={name}
+        style={{
+          width: size,
+          height: size,
+          objectFit: "contain",
+          borderRadius: size > 48 ? 8 : 3,
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
   const abbr = name
     .replace(/^Team /i, "")
     .split(" ")
@@ -41,7 +65,6 @@ function TeamLogo({ name, size = 24 }: { name: string; size?: number }) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-
   return (
     <div
       style={{
@@ -82,11 +105,13 @@ function MatchHeader({
   const isDone = match.status === "completed";
   const score1 = series?.team1Score ?? match.series_score_1;
   const score2 = series?.team2Score ?? match.series_score_2;
+  const c1 = match.team1.accent_color ?? "#7b38ab";
+  const c2 = match.team2.accent_color ?? "#3b6fd4";
 
   return (
     <div
       style={{
-        background: "linear-gradient(to bottom right, #7b38ab18, var(--card), #3b6fd418)",
+        background: `linear-gradient(to bottom right, ${c1}22, transparent 50%), linear-gradient(to top left, ${c2}22, transparent 50%), var(--card)`,
         border: "1px solid var(--border)",
         borderRadius: 10,
         padding: "16px 20px",
@@ -208,7 +233,7 @@ function MatchHeader({
       >
         {/* Team 1 */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, minWidth: 120 }}>
-          <TeamLogo name={match.team1.name} size={96} />
+          <TeamLogo name={match.team1.name} logoUrl={match.team1.logo_url} size={96} />
           <span style={{ color: "#7b38ab", fontWeight: 700, fontSize: 16, textAlign: "center" }}>
             {match.team1.name}
           </span>
@@ -226,19 +251,11 @@ function MatchHeader({
               lineHeight: 1,
             }}
           >
-            <span
-              style={{
-                color: score1 > score2 ? "var(--text)" : "var(--muted)",
-              }}
-            >
+            <span style={{ color: score1 > score2 ? "var(--text)" : "var(--muted)", fontWeight: score1 > score2 ? 900 : 300 }}>
               {score1}
             </span>
-            <span style={{ color: "var(--border)", fontSize: 28 }}>:</span>
-            <span
-              style={{
-                color: score2 > score1 ? "var(--text)" : "var(--muted)",
-              }}
-            >
+            <span style={{ color: "var(--border)", fontSize: 28 }}>-</span>
+            <span style={{ color: score2 > score1 ? "var(--text)" : "var(--muted)", fontWeight: score2 > score1 ? 900 : 300 }}>
               {score2}
             </span>
           </div>
@@ -247,7 +264,7 @@ function MatchHeader({
 
         {/* Team 2 */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, minWidth: 120 }}>
-          <TeamLogo name={match.team2.name} size={96} />
+          <TeamLogo name={match.team2.name} logoUrl={match.team2.logo_url} size={96} />
           <span style={{ color: "#7b38ab", fontWeight: 700, fontSize: 16, textAlign: "center" }}>
             {match.team2.name}
           </span>
