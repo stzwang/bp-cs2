@@ -1,4 +1,5 @@
 import { gridQuery, getPrimaryWeapon, SERIES_QUERY } from "@/lib/grid";
+import { DEMO_NAVI_G2 } from "@/lib/demo-series";
 import type { GameState, SeriesState } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -87,6 +88,10 @@ export async function GET(
   { params }: { params: Promise<{ seriesId: string }> }
 ) {
   const { seriesId } = await params;
+
+  if (seriesId === "demo-navi-g2") {
+    return Response.json({ data: DEMO_NAVI_G2 });
+  }
 
   try {
     const json = await gridQuery(SERIES_QUERY(seriesId));

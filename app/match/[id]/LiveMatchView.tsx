@@ -5,6 +5,10 @@ import { useEffect, useRef, useState } from "react";
 
 const POLL_MS = 10_000;
 
+function abbreviateStage(stage: string): string {
+  return stage.replace(/\bQuarterfinal\b/gi, "QF").replace(/\bSemifinal\b/gi, "SF");
+}
+
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
 function formatSeconds(s: number) {
@@ -157,7 +161,7 @@ function MatchHeader({
           }}
         >
           <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
-            {match.stage} · {match.event_name}
+            {abbreviateStage(match.stage)} · {match.event_name}
           </span>
           <span style={{ fontSize: 11, color: "var(--muted)" }}>
             {new Date(match.scheduled_at).toLocaleString("en-US", {
@@ -389,115 +393,177 @@ function HpBar({ hp, max = 100 }: { hp: number; max?: number }) {
   );
 }
 
-function PlayerRow({
-  player,
-  side,
-  totalRounds,
+function GameStatsTable({
+  game,
+  team1Color,
+  team2Color,
 }: {
-  player: PlayerState & { primaryWeapon?: string };
-  side: string;
-  totalRounds: number;
+  game: GameState;
+  team1Color?: string;
+  team2Color?: string;
 }) {
-  const adr = totalRounds > 0 ? Math.round(player.damageDealt / totalRounds) : 0;
-  const sideColor = side === "terrorists" ? "var(--t)" : "var(--ct)";
+  const [sort, setSort] = useState<{ col: string; dir: "asc" | "desc" }>({ col: "kills", dir: "desc" });
+  const isLive = game.started && !game.finished;
+  const completedRounds = game.rounds.filter((r) => r.finished).length;
+
+  function toggle(col: string) {
+    setSort((prev) => ({ col, dir: prev.col === col && prev.dir === "desc" ? "asc" : "desc" }));
+  }
+
+  function sortVal(p: PlayerState, col: string): number {
+    switch (col) {
+      case "kills": return p.kills;
+      case "deaths": return p.deaths;
+      case "kd": return p.deaths > 0 ? p.kills / p.deaths : p.kills;
+      case "pm": return p.kills - p.deaths;
+      case "hs": return p.headshots;
+      case "adr": return completedRounds > 0 ? p.damageDealt / completedRounds : 0;
+      default: return 0;
+    }
+  }
+
+  const statCols = [
+    { label: "K", key: "kills" },
+    { label: "D", key: "deaths" },
+    { label: "K/D", key: "kd" },
+    { label: "+/-", key: "pm" },
+    { label: "HS", key: "hs" },
+    { label: "ADR", key: "adr" },
+  ];
+
+  function teamRows(team: TeamGameState, accentColor?: string) {
+    const isT = team.side === "terrorists";
+    const sideColor = isT ? "var(--t)" : "var(--ct)";
+    const sideLabel = isT ? "T" : "CT";
+    const colCount = isLive ? 9 : 7;
+    const sorted = [...team.players].sort((a, b) => {
+      const av = sortVal(a, sort.col);
+      const bv = sortVal(b, sort.col);
+      return sort.dir === "desc" ? bv - av : av - bv;
+    });
+
+    const rows = [
+      <tr key={`th-${team.id}`}>
+        <td
+          colSpan={colCount}
+          style={{
+            padding: "6px 10px",
+            background: accentColor ? `${accentColor}1a` : "rgba(0,0,0,.15)",
+            borderTop: "1px solid var(--border)",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ background: sideColor, color: "#000", borderRadius: 3, padding: "1px 5px", fontSize: 9, fontWeight: 800 }}>
+              {sideLabel}
+            </span>
+            <span style={{ fontWeight: 700, fontSize: 13, color: accentColor ?? "#7b38ab" }}>
+              {team.name}
+            </span>
+            <span style={{ marginLeft: "auto", fontSize: 16, fontWeight: 800, color: "var(--text)" }}>
+              {team.score}
+            </span>
+            {isLive && (
+              <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>
+                ${team.money.toLocaleString()}
+              </span>
+            )}
+          </div>
+        </td>
+      </tr>,
+    ];
+
+    sorted.forEach((p, idx) => {
+      const adr = completedRounds > 0 ? Math.round(p.damageDealt / completedRounds) : 0;
+      const kdRaw = p.deaths > 0 ? p.kills / p.deaths : p.kills;
+      const kd = kdRaw.toFixed(2);
+      const pm = p.kills - p.deaths;
+      rows.push(
+        <tr
+          key={p.id}
+          style={{
+            background: idx % 2 === 1 ? "rgba(0,0,0,.1)" : undefined,
+            borderBottom: "1px solid var(--border)",
+            opacity: isLive && !p.alive ? 0.38 : 1,
+          }}
+        >
+          <td style={{ padding: "6px 10px", fontWeight: 600, fontSize: 13 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              {isLive && !p.alive && <span style={{ fontSize: 10 }}>💀</span>}
+              <span>{p.name}</span>
+            </div>
+          </td>
+          {isLive && (
+            <td style={{ padding: "6px 8px", minWidth: 80 }}>
+              {p.alive ? <HpBar hp={p.currentHealth} /> : null}
+            </td>
+          )}
+          {isLive && (
+            <td style={{ padding: "6px 8px", color: "#4ade80", fontSize: 11, whiteSpace: "nowrap" }}>
+              ${p.money.toLocaleString()}
+            </td>
+          )}
+          <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 500 }}>{p.kills}</td>
+          <td style={{ padding: "6px 8px", textAlign: "center", color: "var(--muted)" }}>{p.deaths}</td>
+          <td style={{ padding: "6px 8px", textAlign: "center" }}>
+            <span style={{ color: kdRaw >= 1 ? "#22c55e" : "#ef4444" }}>{kd}</span>
+          </td>
+          <td style={{ padding: "6px 8px", textAlign: "center" }}>
+            <span style={{ color: pm >= 0 ? "#22c55e" : "#ef4444" }}>{pm >= 0 ? `+${pm}` : String(pm)}</span>
+          </td>
+          <td style={{ padding: "6px 8px", textAlign: "center", color: "var(--muted)" }}>{p.headshots}</td>
+          <td style={{ padding: "6px 8px", textAlign: "center", color: "var(--muted)" }}>{adr}</td>
+        </tr>
+      );
+    });
+
+    return rows;
+  }
 
   return (
-    <tr style={{ opacity: player.alive ? 1 : 0.38, borderBottom: "1px solid var(--border)" }}>
-      <td style={{ padding: "5px 8px", fontWeight: 600, fontSize: 13 }}>
-        {!player.alive && <span style={{ marginRight: 4, fontSize: 11 }}>💀</span>}
-        {player.name}
-      </td>
-      <td style={{ padding: "5px 8px", minWidth: 90 }}>
-        {player.alive ? <HpBar hp={player.currentHealth} /> : null}
-      </td>
-      <td style={{ padding: "5px 8px", color: "var(--muted)", fontSize: 12 }}>
-        {player.currentArmor > 0 ? "🛡" : ""}
-      </td>
-      <td style={{ padding: "5px 8px", color: "#4ade80", fontWeight: 600, fontSize: 12 }}>
-        ${player.money.toLocaleString()}
-      </td>
-      <td style={{ padding: "5px 8px", textAlign: "center" }}>{player.kills}</td>
-      <td style={{ padding: "5px 8px", textAlign: "center" }}>{player.deaths}</td>
-      <td style={{ padding: "5px 8px", textAlign: "center" }}>{player.headshots}</td>
-      <td style={{ padding: "5px 8px", textAlign: "center", color: "var(--muted)" }}>{adr}</td>
-      <td style={{ padding: "5px 8px", color: sideColor, fontSize: 12 }}>
-        {player.primaryWeapon ?? "—"}
-      </td>
-    </tr>
-  );
-}
-
-function TeamTable({ team, totalRounds }: { team: TeamGameState; totalRounds: number }) {
-  const isT = team.side === "terrorists";
-  const sideColor = isT ? "var(--t)" : "var(--ct)";
-  const sideLabel = isT ? "T" : "CT";
-
-  return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      {/* Team header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "8px 10px",
-          background: "var(--card2)",
-          borderRadius: "6px 6px 0 0",
-          borderBottom: "1px solid var(--border)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              background: sideColor,
-              color: "#000",
-              borderRadius: 3,
-              padding: "1px 6px",
-              fontSize: 10,
-              fontWeight: 800,
-            }}
-          >
-            {sideLabel}
-          </span>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>{team.name}</span>
-        </div>
-        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: "var(--muted)" }}>${team.money.toLocaleString()}</span>
-          <span style={{ fontSize: 20, fontWeight: 800 }}>{team.score}</span>
-        </div>
-      </div>
-
-      {/* Player table */}
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
         <thead>
-          <tr style={{ background: "var(--card2)", borderBottom: "1px solid var(--border)" }}>
-            {["Player", "HP", "", "$", "K", "D", "HS", "ADR", "Weapon"].map((h) => (
+          <tr style={{ background: "rgba(0,0,0,.25)" }}>
+            <th style={{ padding: "6px 10px", textAlign: "left", color: "rgba(255,255,255,.85)", fontSize: 11, fontWeight: 600 }}>
+              Player
+            </th>
+            {isLive && (
+              <th style={{ padding: "6px 8px", textAlign: "left", color: "rgba(255,255,255,.85)", fontSize: 11, fontWeight: 600, minWidth: 80 }}>
+                HP
+              </th>
+            )}
+            {isLive && (
+              <th style={{ padding: "6px 8px", textAlign: "left", color: "rgba(255,255,255,.85)", fontSize: 11, fontWeight: 600 }}>
+                $
+              </th>
+            )}
+            {statCols.map(({ label, key }) => (
               <th
-                key={h}
+                key={key}
+                onClick={() => toggle(key)}
                 style={{
-                  padding: "3px 8px",
-                  textAlign: ["K", "D", "HS", "ADR"].includes(h) ? "center" : "left",
-                  color: "var(--muted)",
-                  fontSize: 10,
+                  padding: "6px 8px",
+                  textAlign: "center",
+                  color: sort.col === key ? "rgba(255,255,255,1)" : "rgba(255,255,255,.6)",
+                  fontSize: 11,
                   fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  userSelect: "none",
                 }}
               >
-                {h}
+                {label}{" "}
+                <span style={{ fontSize: 8, opacity: sort.col === key ? 1 : 0.3 }}>
+                  {sort.col === key ? (sort.dir === "desc" ? "↓" : "↑") : "↕"}
+                </span>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {[...team.players]
-            .sort((a, b) => b.kills - a.kills)
-            .map((p) => (
-              <PlayerRow
-                key={p.id}
-                player={p as PlayerState & { primaryWeapon?: string }}
-                side={team.side}
-                totalRounds={totalRounds}
-              />
-            ))}
+          {game.team1 && teamRows(game.team1, team1Color)}
+          {game.team2 && teamRows(game.team2, team2Color)}
         </tbody>
       </table>
     </div>
@@ -545,9 +611,9 @@ function RoundHistory({ game }: { game: GameState }) {
   );
 }
 
-function GameView({ game }: { game: GameState }) {
-  const completedRounds = game.rounds.filter((r) => r.finished).length;
+function GameView({ game, team1Color, team2Color }: { game: GameState; team1Color?: string; team2Color?: string }) {
   const liveSegment = game.rounds.find((r) => r.started && !r.finished);
+  const completedRounds = game.rounds.filter((r) => r.finished).length;
   const currentRound = liveSegment?.sequenceNumber ?? completedRounds + 1;
   const clockStr = clockLabel(game);
 
@@ -587,11 +653,7 @@ function GameView({ game }: { game: GameState }) {
         </div>
       </div>
 
-      {/* Player tables side by side */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {game.team1 && <TeamTable team={game.team1} totalRounds={completedRounds} />}
-        {game.team2 && <TeamTable team={game.team2} totalRounds={completedRounds} />}
-      </div>
+      <GameStatsTable game={game} team1Color={team1Color} team2Color={team2Color} />
 
       <RoundHistory game={game} />
     </div>
@@ -680,7 +742,13 @@ export default function LiveMatchView({ match }: { match: Match }) {
       )}
 
       {/* Live game stats */}
-      {activeGame && <GameView game={activeGame} />}
+      {activeGame && (
+        <GameView
+          game={activeGame}
+          team1Color={match.team1.accent_color ?? undefined}
+          team2Color={match.team2.accent_color ?? undefined}
+        />
+      )}
 
       {/* Poll status footer */}
       {match.grid_series_id && (

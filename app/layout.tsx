@@ -18,15 +18,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           display: "flex",
           alignItems: "center",
         }}>
-          <a href="/matches" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <a href="/matches" style={{ textDecoration: "none", color: "inherit" }}>
             <span style={{ fontWeight: 800, fontSize: 15, letterSpacing: "-0.3px" }}>
-              Breaking Point
+              Breaking Point CS
             </span>
-            <span style={{
-              fontSize: 11, fontWeight: 600, background: "#3b1f5e",
-              color: "var(--purple)", border: "1px solid var(--purple)",
-              borderRadius: 4, padding: "1px 7px",
-            }}>CS2</span>
           </a>
         </header>
         <main style={{ maxWidth: 860, margin: "0 auto", padding: "24px 16px" }}>
