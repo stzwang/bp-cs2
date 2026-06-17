@@ -9,8 +9,16 @@ function formatTime(iso: string) {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-    timeZone: "Europe/Berlin",
   });
+}
+
+function formatTz() {
+  return (
+    new Date()
+      .toLocaleTimeString("en-US", { timeZoneName: "short" })
+      .split(" ")
+      .pop() ?? ""
+  );
 }
 
 function formatDay(iso: string) {
@@ -19,7 +27,6 @@ function formatDay(iso: string) {
     month: "long",
     day: "numeric",
     year: "numeric",
-    timeZone: "Europe/Berlin",
   });
 }
 
@@ -107,7 +114,7 @@ function MatchCard({ match }: { match: Match }) {
         )}
         {!isLive && !isDone && (
           <>
-            <span>{formatTime(match.scheduled_at)} CEST</span>
+            <span>{formatTime(match.scheduled_at)} {formatTz()}</span>
             <Sep />
           </>
         )}

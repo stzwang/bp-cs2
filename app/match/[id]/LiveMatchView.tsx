@@ -167,9 +167,7 @@ function MatchHeader({
               hour: "numeric",
               minute: "2-digit",
               hour12: true,
-              timeZone: "Europe/Berlin",
-            })}{" "}
-            CEST
+            })}
           </span>
         </div>
 
@@ -673,9 +671,7 @@ export default function LiveMatchView({ match }: { match: Match }) {
               hour: "numeric",
               minute: "2-digit",
               hour12: true,
-              timeZone: "Europe/Berlin",
-            })}{" "}
-            CEST
+            })}
           </div>
           <div style={{ fontSize: 11, marginTop: 10 }}>
             Live data appears automatically when the match starts
