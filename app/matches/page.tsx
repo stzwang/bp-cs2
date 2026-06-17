@@ -126,10 +126,13 @@ function MatchCard({ match }: { match: Match }) {
         </span>
       </div>
 
-      {/* Card */}
+      {/* Card — gradient uses both team accent colors, matching BP */}
       <div
         style={{
-          background: "var(--card)",
+          background:
+            match.team1.accent_color && match.team2.accent_color
+              ? `linear-gradient(to bottom right, ${match.team1.accent_color}18, transparent), linear-gradient(to top left, ${match.team2.accent_color}18, transparent), var(--card)`
+              : "var(--card)",
           borderRadius: 8,
           boxShadow: "0px 0px 5px 0px rgba(0,0,0,0.25)",
           overflow: "hidden",
@@ -226,6 +229,7 @@ function Sep() {
 export default function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"upcoming" | "completed">("upcoming");
 
   async function fetchMatches() {
     const { data } = await supabase
@@ -262,8 +266,12 @@ export default function MatchesPage() {
     };
   }, []);
 
+  const filtered = matches.filter((m) =>
+    tab === "completed" ? m.status === "completed" : m.status !== "completed"
+  );
+
   const grouped: Record<string, Match[]> = {};
-  for (const m of matches) {
+  for (const m of filtered) {
     const day = formatDay(m.scheduled_at);
     if (!grouped[day]) grouped[day] = [];
     grouped[day].push(m);
@@ -279,7 +287,43 @@ export default function MatchesPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>Matches</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Matches</h1>
+
+      {/* Tab toggle — matches BP's Upcoming/Live | Completed pattern */}
+      <div
+        style={{
+          display: "flex",
+          background: "var(--card2)",
+          borderRadius: 8,
+          padding: 4,
+          marginBottom: 24,
+          gap: 4,
+        }}
+      >
+        {(["upcoming", "completed"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            style={{
+              flex: 1,
+              padding: "8px 0",
+              borderRadius: 6,
+              border: "none",
+              background: tab === t ? "var(--card)" : "transparent",
+              color: tab === t ? "var(--text)" : "var(--muted)",
+              fontWeight: tab === t ? 700 : 400,
+              fontSize: 14,
+              cursor: "pointer",
+              boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.3)" : "none",
+              transition: "all 0.15s",
+            }}
+          >
+            {t === "upcoming" ? "Upcoming / Live" : "Completed"}
+          </button>
+        ))}
+      </div>
+
       {Object.entries(grouped).map(([day, dayMatches]) => (
         <div key={day} style={{ marginBottom: 32 }}>
           {/* Date divider */}
