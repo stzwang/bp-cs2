@@ -634,8 +634,8 @@ export default function LiveMatchView({ match }: { match: Match }) {
         onGameSelect={setActiveGameIdx}
       />
 
-      {/* No series ID yet */}
-      {!match.grid_series_id && (
+      {/* Pre-match: scheduled but not yet live */}
+      {!match.grid_series_id && match.status === "upcoming" && (
         <div
           style={{
             background: "var(--card)",
