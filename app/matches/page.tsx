@@ -9,16 +9,8 @@ function formatTime(iso: string) {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZoneName: "short",
   });
-}
-
-function formatTz() {
-  return (
-    new Date()
-      .toLocaleTimeString("en-US", { timeZoneName: "short" })
-      .split(" ")
-      .pop() ?? ""
-  );
 }
 
 function formatDay(iso: string) {
@@ -100,6 +92,9 @@ function MatchCard({ match }: { match: Match }) {
           marginBottom: 4,
           display: "flex",
           alignItems: "center",
+          flexWrap: "nowrap",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
           color: "var(--muted)",
           textTransform: "uppercase",
           letterSpacing: "0.04em",
@@ -114,7 +109,7 @@ function MatchCard({ match }: { match: Match }) {
         )}
         {!isLive && !isDone && (
           <>
-            <span>{formatTime(match.scheduled_at)} {formatTz()}</span>
+            <span>{formatTime(match.scheduled_at)}</span>
             <Sep />
           </>
         )}
