@@ -199,19 +199,23 @@ function TeamRow({
       >
         {name}
       </span>
-      {won && (
-        <span style={{ fontSize: 9, color: "var(--muted)", lineHeight: 1 }}>◄</span>
-      )}
-      <span
-        style={{
-          fontWeight: won ? 700 : 400,
-          fontSize: 14,
-          minWidth: 14,
-          textAlign: "right",
-        }}
-      >
-        {score}
-      </span>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <span
+          style={{
+            fontWeight: won ? 900 : 300,
+            fontSize: 14,
+            minWidth: 14,
+            textAlign: "right",
+          }}
+        >
+          {score}
+        </span>
+        {won ? (
+          <span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 4, lineHeight: 1 }}>◄</span>
+        ) : (
+          <div style={{ marginLeft: 4, width: 9 }} />
+        )}
+      </div>
     </div>
   );
 }
