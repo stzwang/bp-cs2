@@ -21,18 +21,5 @@ export default async function MatchPage({
 
   if (!data) notFound();
 
-  return (
-    <div>
-      <a
-        href="/matches"
-        style={{ color: "var(--muted)", fontSize: 13, display: "inline-block", marginBottom: 16 }}
-      >
-        ← Back to Matches
-      </a>
-      <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 4 }}>
-        {(data as unknown as Match).event_name} · {(data as unknown as Match).stage}
-      </div>
-      <LiveMatchView match={data as unknown as Match} />
-    </div>
-  );
+  return <LiveMatchView match={data as unknown as Match} />;
 }

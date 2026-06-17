@@ -6,9 +6,9 @@ import { useEffect, useState } from "react";
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
-    hour12: false,
+    hour12: true,
     timeZone: "Europe/Berlin",
   });
 }
@@ -18,167 +18,15 @@ function formatDay(iso: string) {
     weekday: "long",
     month: "long",
     day: "numeric",
+    year: "numeric",
     timeZone: "Europe/Berlin",
   });
 }
 
-function LiveBadge() {
-  return (
-    <span
-      style={{
-        background: "#14301a",
-        color: "var(--live)",
-        border: "1px solid var(--live)",
-        borderRadius: 4,
-        padding: "2px 8px",
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: 1,
-        animation: "pulse 2s infinite",
-      }}
-    >
-      LIVE
-    </span>
-  );
-}
-
-function MatchCard({ match }: { match: Match }) {
-  const isLive = match.status === "live";
-  const isDone = match.status === "completed";
-
-  return (
-    <a href={`/match/${match.id}`}>
-      <div
-        style={{
-          background: "var(--card)",
-          border: `1px solid ${isLive ? "var(--live)" : "var(--border)"}`,
-          borderRadius: 8,
-          padding: "14px 18px",
-          marginBottom: 8,
-          cursor: "pointer",
-          transition: "border-color 0.15s",
-          boxShadow: isLive ? "0 0 12px #22c55e22" : "none",
-        }}
-      >
-        {/* Top row: stage + time/status */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 10,
-          }}
-        >
-          <span style={{ color: "var(--muted)", fontSize: 12 }}>
-            {match.stage} · {match.format}
-          </span>
-          <span style={{ fontSize: 12 }}>
-            {isLive ? (
-              <LiveBadge />
-            ) : isDone ? (
-              <span style={{ color: "var(--muted)" }}>Final</span>
-            ) : (
-              <span style={{ color: "var(--muted)" }}>
-                {formatTime(match.scheduled_at)} CEST
-              </span>
-            )}
-          </span>
-        </div>
-
-        {/* Teams + scores */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          {/* Team 1 */}
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              justifyContent: "flex-end",
-            }}
-          >
-            <span
-              style={{
-                fontWeight: 700,
-                fontSize: 16,
-                opacity: isDone && match.winner_team !== match.team1_id ? 0.5 : 1,
-              }}
-            >
-              {match.team1.name}
-            </span>
-            <TeamLogo name={match.team1.name} />
-          </div>
-
-          {/* Score */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 22,
-              fontWeight: 800,
-              minWidth: 60,
-              justifyContent: "center",
-            }}
-          >
-            <span
-              style={{
-                color:
-                  isDone && match.winner_team === match.team1_id
-                    ? "var(--live)"
-                    : "var(--text)",
-              }}
-            >
-              {match.series_score_1}
-            </span>
-            <span style={{ color: "var(--border)", fontSize: 18 }}>:</span>
-            <span
-              style={{
-                color:
-                  isDone && match.winner_team === match.team2_id
-                    ? "var(--live)"
-                    : "var(--text)",
-              }}
-            >
-              {match.series_score_2}
-            </span>
-          </div>
-
-          {/* Team 2 */}
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <TeamLogo name={match.team2.name} />
-            <span
-              style={{
-                fontWeight: 700,
-                fontSize: 16,
-                opacity: isDone && match.winner_team !== match.team2_id ? 0.5 : 1,
-              }}
-            >
-              {match.team2.name}
-            </span>
-          </div>
-        </div>
-      </div>
-    </a>
-  );
-}
-
-function TeamLogo({ name }: { name: string }) {
+function TeamLogo({ name, size = 24 }: { name: string; size?: number }) {
+  // Strip common prefixes to get a short abbr
   const abbr = name
+    .replace(/^Team /i, "")
     .split(" ")
     .map((w) => w[0])
     .join("")
@@ -188,22 +36,158 @@ function TeamLogo({ name }: { name: string }) {
   return (
     <div
       style={{
-        width: 36,
-        height: 36,
-        borderRadius: 6,
+        width: size,
+        height: size,
+        borderRadius: size > 48 ? 8 : 4,
         background: "var(--card2)",
         border: "1px solid var(--border)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: 12,
+        fontSize: size > 48 ? Math.round(size * 0.28) : 9,
         fontWeight: 700,
         color: "var(--muted)",
         flexShrink: 0,
+        letterSpacing: "0.02em",
       }}
     >
       {abbr}
     </div>
+  );
+}
+
+function MatchCard({ match }: { match: Match }) {
+  const isLive = match.status === "live";
+  const isDone = match.status === "completed";
+  const t1Won = isDone && match.winner_team === match.team1_id;
+  const t2Won = isDone && match.winner_team === match.team2_id;
+
+  return (
+    <a href={`/match/${match.id}`} style={{ display: "block", marginBottom: 12 }}>
+      {/* Meta line above the card — matches BP's format exactly */}
+      <div
+        style={{
+          fontSize: 11,
+          marginBottom: 4,
+          display: "flex",
+          alignItems: "center",
+          color: "var(--muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          gap: 0,
+        }}
+      >
+        {isLive && (
+          <>
+            <span style={{ color: "var(--red)", fontWeight: 700 }}>In Progress</span>
+            <Sep />
+          </>
+        )}
+        {!isLive && !isDone && (
+          <>
+            <span>{formatTime(match.scheduled_at)} CEST</span>
+            <Sep />
+          </>
+        )}
+        {isDone && (
+          <>
+            <span>Final</span>
+            <Sep />
+          </>
+        )}
+        <span>{match.format}</span>
+        <Sep />
+        <span>
+          {match.stage} · {match.event_name}
+        </span>
+      </div>
+
+      {/* Card */}
+      <div
+        style={{
+          background: "var(--card)",
+          borderRadius: 8,
+          boxShadow: "0px 0px 5px 0px rgba(0,0,0,0.25)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Team 1 row */}
+        <TeamRow
+          name={match.team1.name}
+          score={match.series_score_1}
+          won={t1Won}
+          lost={isDone && !t1Won}
+        />
+
+        {/* Divider */}
+        <div style={{ height: 1, background: "var(--border)", opacity: 0.3, margin: "0 10px" }} />
+
+        {/* Team 2 row */}
+        <TeamRow
+          name={match.team2.name}
+          score={match.series_score_2}
+          won={t2Won}
+          lost={isDone && !t2Won}
+        />
+      </div>
+    </a>
+  );
+}
+
+function TeamRow({
+  name,
+  score,
+  won,
+  lost,
+}: {
+  name: string;
+  score: number;
+  won: boolean;
+  lost: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        padding: "9px 14px",
+        gap: 10,
+        opacity: lost ? 0.45 : 1,
+      }}
+    >
+      <TeamLogo name={name} />
+      <span
+        style={{
+          flex: 1,
+          fontWeight: won ? 700 : 300,
+          fontSize: 14,
+          lineHeight: 1.3,
+        }}
+      >
+        {name}
+      </span>
+      {won && (
+        <span style={{ fontSize: 9, color: "var(--muted)", lineHeight: 1 }}>◄</span>
+      )}
+      <span
+        style={{
+          fontWeight: won ? 700 : 400,
+          fontSize: 14,
+          minWidth: 14,
+          textAlign: "right",
+        }}
+      >
+        {score}
+      </span>
+    </div>
+  );
+}
+
+function Sep() {
+  return (
+    <span style={{ color: "var(--border)", margin: "0 6px", fontWeight: 300 }}>
+      |
+    </span>
   );
 }
 
@@ -225,23 +209,18 @@ export default function MatchesPage() {
   useEffect(() => {
     fetchMatches();
 
-    // Auto-discover live series in background
     fetch("/api/discover", { method: "POST" }).catch(() => null);
+    const discoverInterval = setInterval(
+      () => fetch("/api/discover", { method: "POST" }).catch(() => null),
+      2 * 60 * 1000
+    );
 
-    // Re-poll discover every 2 minutes
-    const discoverInterval = setInterval(() => {
-      fetch("/api/discover", { method: "POST" }).catch(() => null);
-    }, 2 * 60 * 1000);
-
-    // Realtime subscription for match status changes
     const channel = supabase
       .channel("cs2_matches_list")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "cs2_matches" },
-        () => {
-          fetchMatches();
-        }
+        () => fetchMatches()
       )
       .subscribe();
 
@@ -251,7 +230,6 @@ export default function MatchesPage() {
     };
   }, []);
 
-  // Group by day
   const grouped: Record<string, Match[]> = {};
   for (const m of matches) {
     const day = formatDay(m.scheduled_at);
@@ -269,35 +247,30 @@ export default function MatchesPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Matches</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>Matches</h1>
       {Object.entries(grouped).map(([day, dayMatches]) => (
-        <div key={day} style={{ marginBottom: 28 }}>
+        <div key={day} style={{ marginBottom: 32 }}>
+          {/* Date divider */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 12,
-              marginBottom: 12,
+              gap: 14,
+              marginBottom: 14,
             }}
           >
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 600 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
               {day}
             </span>
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
           </div>
+
           {dayMatches.map((m) => (
             <MatchCard key={m.id} match={m} />
           ))}
         </div>
       ))}
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.6; }
-        }
-      `}</style>
     </div>
   );
 }
