@@ -1,83 +1,71 @@
-import { gridQuery, nameMatch, PLAYER_LOOKUP_QUERY, SERIES_QUERY } from "@/lib/grid";
+import { centralDataQuery, gridQuery, nameMatch, ALL_SERIES_QUERY, SERIES_QUERY } from "@/lib/grid";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+// Sub-tournament ID for the playoff bracket (QFs, SFs, Grand Final)
+// Found via: allSeries central-data → series.tournament.id
+const TOURNAMENT_ID = "829583"; // IEM Cologne 2026 (Playoffs)
+
 export async function POST() {
   const admin = supabaseAdmin();
 
-  // Find upcoming matches that have started or start within 90 minutes
-  const cutoff = new Date(Date.now() + 90 * 60 * 1000).toISOString();
-  const { data: matches, error: matchErr } = await admin
+  // --- Phase 1: Link any unmatched DB entries to their GRID series ID ---
+  // Uses GRID Central Data API — no player seeds required, works before matches start
+  const { data: unlinked } = await admin
     .from("cs2_matches")
     .select(
-      "id, team1_id, team2_id, scheduled_at, team1:cs2_teams!cs2_matches_team1_id_fkey(name), team2:cs2_teams!cs2_matches_team2_id_fkey(name)"
+      "id, team1:cs2_teams!cs2_matches_team1_id_fkey(name), team2:cs2_teams!cs2_matches_team2_id_fkey(name)"
     )
-    .in("status", ["upcoming"])
-    .lte("scheduled_at", cutoff);
+    .is("grid_series_id", null)
+    .neq("status", "completed");
 
-  // --- Phase 1: discover upcoming matches and mark live ---
-  const updated: number[] = [];
+  const linked: number[] = [];
 
-  if (!matchErr && matches?.length) {
-    const teamIds = [...new Set(matches.flatMap((m) => [m.team1_id, m.team2_id]))];
+  if (unlinked?.length) {
+    const centralJson = await centralDataQuery(ALL_SERIES_QUERY(TOURNAMENT_ID)).catch(() => null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const gridSeries: any[] = centralJson?.data?.allSeries?.edges?.map((e: any) => e.node) ?? [];
 
-    const { data: seeds } = await admin
-      .from("cs2_player_seeds")
-      .select("team_id, player_name, steam64_id")
-      .in("team_id", teamIds);
+    for (const gSeries of gridSeries) {
+      const gridT1: string = gSeries.teams[0]?.baseInfo?.name ?? "";
+      const gridT2: string = gSeries.teams[1]?.baseInfo?.name ?? "";
 
-    if (seeds?.length) {
-      const seedArgs = seeds.map((s, i) => ({ alias: `p${i}`, steam64: s.steam64_id }));
-      const json = await gridQuery(PLAYER_LOOKUP_QUERY(seedArgs)).catch(() => null);
+      for (const dbMatch of unlinked) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dbT1: string = (dbMatch.team1 as any)?.name ?? "";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dbT2: string = (dbMatch.team2 as any)?.name ?? "";
 
-      if (json?.data) {
-        const liveSeries = new Map<string, { id: string; names: string[] }>();
-        for (const result of Object.values(json.data)) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const s = result as any;
-          if (s?.started && !s?.finished && s?.id && !liveSeries.has(s.id)) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            liveSeries.set(s.id, { id: s.id, names: (s.teams ?? []).map((t: any) => t.name as string) });
-          }
-        }
+        // Accept either team order since GRID may not match our seeding order
+        const matched =
+          (nameMatch(gridT1, dbT1) && nameMatch(gridT2, dbT2)) ||
+          (nameMatch(gridT1, dbT2) && nameMatch(gridT2, dbT1));
 
-        for (const match of matches) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const t1 = (match.team1 as any)?.name ?? "";
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const t2 = (match.team2 as any)?.name ?? "";
-
-          for (const series of liveSeries.values()) {
-            const hasT1 = series.names.some((n) => nameMatch(n, t1));
-            const hasT2 = series.names.some((n) => nameMatch(n, t2));
-            if (hasT1 && hasT2) {
-              await admin
-                .from("cs2_matches")
-                .update({ grid_series_id: series.id, status: "live" })
-                .eq("id", match.id);
-              updated.push(match.id);
-              break;
-            }
-          }
+        if (matched) {
+          await admin.from("cs2_matches").update({ grid_series_id: gSeries.id }).eq("id", dbMatch.id);
+          linked.push(dbMatch.id);
+          break;
         }
       }
     }
   }
 
-  // --- Phase 2: sync live matches (scores + completion) ---
-  // Always runs so completed matches get marked even when no upcoming matches remain
-  const { data: liveMatches } = await admin
+  // --- Phase 2: Sync live state for all linked, non-completed matches ---
+  // Detects match start (upcoming → live) and match end (live → completed)
+  const { data: toSync } = await admin
     .from("cs2_matches")
-    .select("id, team1_id, team2_id, grid_series_id")
-    .eq("status", "live")
-    .not("grid_series_id", "is", null);
+    .select("id, team1_id, team2_id, grid_series_id, status")
+    .not("grid_series_id", "is", null)
+    .neq("status", "completed")
+    .not("grid_series_id", "like", "demo-%");
 
   const synced: number[] = [];
-  for (const lm of liveMatches ?? []) {
+
+  for (const match of toSync ?? []) {
     try {
-      const liveJson = await gridQuery(SERIES_QUERY(lm.grid_series_id!));
-      const raw = liveJson?.data?.seriesState;
+      const json = await gridQuery(SERIES_QUERY(match.grid_series_id!));
+      const raw = json?.data?.seriesState;
       if (!raw) continue;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,7 +74,7 @@ export async function POST() {
       const score2: number = teams[1]?.score ?? 0;
 
       if (raw.finished) {
-        const winnerId = score1 > score2 ? lm.team1_id : lm.team2_id;
+        const winnerId = score1 > score2 ? match.team1_id : match.team2_id;
         await admin
           .from("cs2_matches")
           .update({
@@ -95,19 +83,18 @@ export async function POST() {
             series_score_2: score2,
             winner_team: winnerId,
           })
-          .eq("id", lm.id);
-      } else {
-        // Keep scores current so the match list reflects live map progress
+          .eq("id", match.id);
+      } else if (raw.started) {
         await admin
           .from("cs2_matches")
-          .update({ series_score_1: score1, series_score_2: score2 })
-          .eq("id", lm.id);
+          .update({ status: "live", series_score_1: score1, series_score_2: score2 })
+          .eq("id", match.id);
       }
-      synced.push(lm.id);
+      synced.push(match.id);
     } catch {
-      // ignore per-match errors so the rest still process
+      // ignore per-match errors
     }
   }
 
-  return Response.json({ updated, synced });
+  return Response.json({ linked, synced });
 }

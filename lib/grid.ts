@@ -1,8 +1,8 @@
-const GRID_URL =
-  "https://api-op.grid.gg/live-data-feed/series-state/graphql";
+const LIVE_URL = "https://api-op.grid.gg/live-data-feed/series-state/graphql";
+const CENTRAL_URL = "https://api-op.grid.gg/central-data/graphql";
 
-export async function gridQuery(query: string) {
-  const res = await fetch(GRID_URL, {
+async function gridFetch(url: string, query: string) {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -14,6 +14,9 @@ export async function gridQuery(query: string) {
   if (!res.ok) throw new Error(`GRID API ${res.status}`);
   return res.json();
 }
+
+export const gridQuery = (query: string) => gridFetch(LIVE_URL, query);
+export const centralDataQuery = (query: string) => gridFetch(CENTRAL_URL, query);
 
 export const SERIES_QUERY = (id: string) => `{
   seriesState(id: "${id}") {
@@ -40,6 +43,24 @@ export const SERIES_QUERY = (id: string) => `{
         teams { ... on SegmentTeamStateCs2 {
           id name side won kills firstKill winType
         }}
+      }
+    }
+  }
+}`;
+
+// Central Data API: fetch all scheduled series for a tournament (by sub-tournament ID)
+export const ALL_SERIES_QUERY = (tournamentId: string) => `{
+  allSeries(
+    filter: { tournamentId: "${tournamentId}" }
+    orderBy: StartTimeScheduled
+    orderDirection: ASC
+    first: 50
+  ) {
+    edges {
+      node {
+        id
+        startTimeScheduled
+        teams { baseInfo { name } }
       }
     }
   }
