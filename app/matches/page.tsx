@@ -281,9 +281,12 @@ export default function MatchesPage() {
     };
   }, []);
 
-  const filtered = matches.filter((m) =>
-    tab === "completed" ? m.status === "completed" : m.status !== "completed"
-  );
+  const filtered = matches
+    .filter((m) => (tab === "completed" ? m.status === "completed" : m.status !== "completed"))
+    .sort((a, b) => {
+      const diff = new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
+      return tab === "completed" ? -diff : diff;
+    });
 
   const grouped: Record<string, Match[]> = {};
   for (const m of filtered) {
