@@ -42,8 +42,9 @@ function parseGame(g: any): GameState {
 
   const teams = (g.teams ?? []).map(parseTeam);
   const segments = (g.segments ?? [])
+    // GRID may label rounds as type "round", "phase", or omit type — accept any segment with a sequenceNumber
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .filter((s: any) => s.type === "round")
+    .filter((s: any) => s.sequenceNumber != null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((s: any) => ({
       id: s.id,
