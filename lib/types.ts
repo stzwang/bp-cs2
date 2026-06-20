@@ -91,6 +91,37 @@ export interface GameState {
   rounds: RoundState[];
 }
 
+/** One player's position + status captured at the instant a kill is detected. */
+export interface PositionSnapshot {
+  playerId: string;
+  name: string;
+  side: string;
+  team: 1 | 2;
+  x: number;
+  y: number;
+  alive: boolean;
+}
+
+/**
+ * A kill reconstructed by diffing live state polls. Killer attribution is best-effort
+ * (the enemy whose kill count rose in the same interval), and positions are sampled at
+ * detection time — close to, but not exactly, the kill tick.
+ */
+export interface KillEvent {
+  id: string;
+  gameId: string;
+  mapName: string;
+  round: number;
+  ts: number;
+  victimId: string;
+  victimName: string;
+  victimSide: string;
+  killerId: string | null;
+  killerName: string | null;
+  killerSide: string | null;
+  positions: PositionSnapshot[];
+}
+
 export interface SeriesState {
   id: string;
   started: boolean;

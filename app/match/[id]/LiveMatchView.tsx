@@ -1,9 +1,116 @@
 "use client";
 
-import type { GameState, Match, PlayerState, SeriesState, TeamGameState } from "@/lib/types";
+import type {
+  GameState,
+  KillEvent,
+  Match,
+  PlayerState,
+  PositionSnapshot,
+  SeriesState,
+  TeamGameState,
+} from "@/lib/types";
 import { useEffect, useRef, useState } from "react";
+import KillFeed from "./KillFeed";
 
-const POLL_MS = 10_000;
+// Faster cadence than the original 10s so we catch kills closer to when they happen.
+const POLL_MS = 5_000;
+
+// Per-player snapshot used to diff state between polls for kill detection.
+interface PlayerSnap {
+  kills: number;
+  alive: boolean;
+  name: string;
+  side: string;
+  team: 1 | 2;
+  x: number | null;
+  y: number | null;
+}
+
+function snapshotGame(game: GameState): Map<string, PlayerSnap> {
+  const m = new Map<string, PlayerSnap>();
+  const add = (team: TeamGameState | null, teamNo: 1 | 2) => {
+    if (!team) return;
+    for (const p of team.players) {
+      m.set(p.id, {
+        kills: p.kills,
+        alive: p.alive,
+        name: p.name,
+        side: team.side,
+        team: teamNo,
+        x: p.position?.x ?? null,
+        y: p.position?.y ?? null,
+      });
+    }
+  };
+  add(game.team1, 1);
+  add(game.team2, 2);
+  return m;
+}
+
+function currentRoundNumber(game: GameState): number {
+  const completed = game.rounds.filter((r) => r.finished).length;
+  const live = game.rounds.find((r) => r.started && !r.finished);
+  return live?.sequenceNumber ?? completed + 1;
+}
+
+/**
+ * Diff the previous poll against the current game to reconstruct kills.
+ * A death is prev.alive && !cur.alive; the killer is best-effort matched to an enemy
+ * whose kill count rose in the same interval. Returns new events + the fresh snapshot.
+ */
+function detectKills(
+  game: GameState,
+  prev: Map<string, PlayerSnap> | undefined
+): { events: KillEvent[]; snapshot: Map<string, PlayerSnap> } {
+  const cur = snapshotGame(game);
+  if (!prev) return { events: [], snapshot: cur };
+
+  const round = currentRoundNumber(game);
+  const positions: PositionSnapshot[] = [];
+  cur.forEach((s, id) => {
+    if (s.x != null && s.y != null) {
+      positions.push({ playerId: id, name: s.name, side: s.side, team: s.team, x: s.x, y: s.y, alive: s.alive });
+    }
+  });
+
+  // Build a pool of killer "credits" from enemies whose kill count increased.
+  const killerPool: { playerId: string; name: string; side: string; team: 1 | 2 }[] = [];
+  cur.forEach((s, id) => {
+    const p = prev.get(id);
+    const delta = p ? s.kills - p.kills : 0;
+    for (let i = 0; i < delta; i++) {
+      killerPool.push({ playerId: id, name: s.name, side: s.side, team: s.team });
+    }
+  });
+
+  const events: KillEvent[] = [];
+  let seq = 0;
+  cur.forEach((s, id) => {
+    const p = prev.get(id);
+    if (!p || !(p.alive && !s.alive)) return; // only newly-dead players
+
+    // Pick a killer from the opposing team if one is available.
+    const idx = killerPool.findIndex((k) => k.team !== s.team);
+    const killer = idx >= 0 ? killerPool.splice(idx, 1)[0] : null;
+
+    events.push({
+      id: `${game.id}-r${round}-${id}-${Date.now()}-${seq++}`,
+      gameId: game.id,
+      mapName: game.mapName,
+      round,
+      ts: Date.now() + seq,
+      victimId: id,
+      victimName: s.name,
+      victimSide: s.side,
+      killerId: killer?.playerId ?? null,
+      killerName: killer?.name ?? null,
+      killerSide: killer?.side ?? null,
+      positions,
+    });
+  });
+
+  return { events, snapshot: cur };
+}
 
 function abbreviateStage(stage: string): string {
   return stage.replace(/\bQuarterfinal\b/gi, "QF").replace(/\bSemifinal\b/gi, "SF");
@@ -611,7 +718,17 @@ function RoundHistory({ game }: { game: GameState }) {
   );
 }
 
-function GameView({ game, team1Color, team2Color }: { game: GameState; team1Color?: string; team2Color?: string }) {
+function GameView({
+  game,
+  team1Color,
+  team2Color,
+  kills,
+}: {
+  game: GameState;
+  team1Color?: string;
+  team2Color?: string;
+  kills: KillEvent[];
+}) {
   const liveSegment = game.rounds.find((r) => r.started && !r.finished);
   const completedRounds = game.rounds.filter((r) => r.finished).length;
   const currentRound = liveSegment?.sequenceNumber ?? completedRounds + 1;
@@ -656,6 +773,8 @@ function GameView({ game, team1Color, team2Color }: { game: GameState; team1Colo
       <GameStatsTable game={game} team1Color={team1Color} team2Color={team2Color} />
 
       <RoundHistory game={game} />
+
+      <KillFeed kills={kills} team1Color={team1Color} team2Color={team2Color} />
     </div>
   );
 }
@@ -667,7 +786,9 @@ export default function LiveMatchView({ match }: { match: Match }) {
   const [activeGameIdx, setActiveGameIdx] = useState(0);
   const [lastPoll, setLastPoll] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState(POLL_MS / 1000);
+  const [killsByGame, setKillsByGame] = useState<Record<string, KillEvent[]>>({});
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevSnapsRef = useRef<Record<string, Map<string, PlayerSnap>>>({});
 
   async function poll() {
     if (!match.grid_series_id) return;
@@ -676,9 +797,23 @@ export default function LiveMatchView({ match }: { match: Match }) {
       const { data } = await res.json();
       if (data) {
         setSeries(data as SeriesState);
-        const liveIdx = (data.games as GameState[]).findIndex((g) => g.started && !g.finished);
+        const games = data.games as GameState[];
+        const liveIdx = games.findIndex((g) => g.started && !g.finished);
         if (liveIdx >= 0) setActiveGameIdx(liveIdx);
-        else setActiveGameIdx(Math.max(0, data.games.length - 1));
+        else setActiveGameIdx(Math.max(0, games.length - 1));
+
+        // Reconstruct kills from the live game by diffing against the previous poll.
+        const liveGame = liveIdx >= 0 ? games[liveIdx] : null;
+        if (liveGame) {
+          const { events, snapshot } = detectKills(liveGame, prevSnapsRef.current[liveGame.id]);
+          prevSnapsRef.current[liveGame.id] = snapshot;
+          if (events.length) {
+            setKillsByGame((prev) => ({
+              ...prev,
+              [liveGame.id]: [...(prev[liveGame.id] ?? []), ...events],
+            }));
+          }
+        }
       }
     } catch {
       // silent
@@ -747,6 +882,7 @@ export default function LiveMatchView({ match }: { match: Match }) {
           game={activeGame}
           team1Color={match.team1.accent_color ?? undefined}
           team2Color={match.team2.accent_color ?? undefined}
+          kills={killsByGame[activeGame.id] ?? []}
         />
       )}
 
